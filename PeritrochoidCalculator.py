@@ -2,6 +2,7 @@ import math
 import numpy as np
 from matplotlib import pyplot as plt
 
+
 class Point:
     """
         A point in cartesian space
