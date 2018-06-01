@@ -109,3 +109,4 @@ venv.bak/
 # Outputs
 *.svg
 *.png
+*.dxf

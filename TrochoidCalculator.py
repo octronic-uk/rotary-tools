@@ -2,37 +2,7 @@ import math
 import numpy as np
 from matplotlib import pyplot as plt
 import svgwrite
-
-
-class Point:
-    """
-        A point in cartesian space
-    """
-    x = 0.0
-    y = 0.0
-
-    def __init__(self, _x=0.0, _y=0.0):
-        self.x = _x
-        self.y = _y
-
-
-class Circle:
-    """
-        A cartesian-friendly circle
-    """
-    origin = Point()
-    radius = 1.0
-
-    def __init__(self, origin=Point(), radius=1.0):
-        self.origin = origin
-        self.radius = radius
-
-    def concentric_point(self, theta, radius):
-        return Point(
-            self.origin.x+(radius * math.cos(theta)),
-            self.origin.y+(radius * math.sin(theta))
-        )
-
+from dxfwrite import DXFEngine as dxf
 
 class TrochoidCalculator:
 
@@ -43,34 +13,20 @@ class TrochoidCalculator:
 
         Kenichi Yamamoto's notation will be marked as KYN herein.
 
+
+
+        You can use the well proofed epitrochoid-parameters of the 294 ccm engines: [2]
+            R = 71mm
+            e = 11.6mm
+            a = 0.5mm
+
         References
             [1] A Great source of rotary goodness
                 http://scottishnationalstandardbearer.000webhostapp.com/re/Trochoids/Trochoids.htm
-    """
 
-    """ 
-        Base circle
-            origin = OA in KYN 
-            radius = p in KYN 
+            [2] CNCZone thread discussing Wankel Engine Builds
+                https://www.cnczone.com/forums/i-c-engines/206328-cnc.html
     """
-    base_circle = None
-
-    """
-        Cartesian revolving circle
-            origin = OB in KYN 
-            radius = q in KYN
-    """
-    revolving_circle = None
-
-    # N.B.
-    #   * The following initial variables are arbitrary.
-    #   * All thetas are in RADIANS, I'm not a savage...
-
-    """
-        Initial angle of revolving circle
-            alpha in KYN
-    """
-    revolving_circle_theta = 0
 
     """ 
         Arm Length 
@@ -82,6 +38,12 @@ class TrochoidCalculator:
         Eccentricity e in KYN
     """
     eccentricity = 5
+
+    """
+        The radius that produces the parallel rotor housing trochoid
+        a in KYN
+    """
+    a = 1.0
 
     """
         Trochoid 'm' value
@@ -101,74 +63,52 @@ class TrochoidCalculator:
     """
     theta_increment = 0.01
 
-    def __init__(self,
-                 base=Circle(Point(0, 0), radius=10),
-                 revolving_circle_radius=20):
+    """
+        ratio of rotor_bore : e
+    """
+    rotor_bore_ratio = 1.75
 
-        # Set the base circle origin/radius
-        self.base_circle = base
-
-        # Calculate the revolving circle origin from the base
-        self.revolving_circle = Circle(
-            self.base_circle.concentric_point(
-                self.revolving_circle_theta,
-                self.eccentricity
-            ), revolving_circle_radius
-        )
-
-    def generate_peritrochoid(self):
-
+    """
+        x = e sin alpha + R cos alpha/3
+        y = e sin alpha + R sin alpha/3
+    """
+    def generate_trochoid(self):
         # Array of points generated
         points = []
 
-        for next_theta in np.arange(0, math.pi*(self.trochoid_m*2), self.theta_increment):
+        R = self.generating_radius+self.alpha
 
-            # Get the next theta
-            self.revolving_circle_theta = next_theta
-
-            # set the origin of the revolving circle
-            self.revolving_circle.origin = self.base_circle.concentric_point(
-                self.revolving_circle_theta,
-                self.eccentricity
-            )
-
-            next_point = self.revolving_circle.concentric_point(
-                next_theta/self.trochoid_m,
-                self.generating_radius
-            )
-
-            points.append(next_point)
+        for angle in np.arange(0, math.pi*(self.trochoid_m*2), self.theta_increment):
+            points.append([
+                self.eccentricity * math.cos(angle) + R * math.cos(angle/self.trochoid_m),
+                self.eccentricity * math.sin(angle) + R * math.sin(angle/self.trochoid_m)
+            ])
 
         return points
 
     """
-        Naively implemented from [1] using
-        
-        X = R ×	( cos 2v - (1/R) (3e^2/2R) × (cos 4v - cos 8v) + (1/R) e √( 1 - 9 (e/R)^2 sin^2 3v ) × (cos 5v + cos v) )
-        Y = R ×	( sin 2v + (1/R) (3e^2/2R) × (sin 8v + sin 4v) + (1/R) e √( 1 - 9 (e/R)^2 sin^2 3v ) × (sin 5v - sin v) )
+        Naively implemented KY's RE
     """
     def generate_rotor(self):
         # Array of points generated
         points = []
 
-        for next_v in np.arange((1.0/6.0)*math.pi, (1.0/2.0)*math.pi, self.theta_increment):
-            print("NextV = %f" % next_v)
-            next_point = self.generate_rotor_point(next_v)
+        # Using self.theta_increment/2 for a bit more precision
+
+        for v in np.arange((1.0/6.0)*math.pi, (3.0/6.0)*math.pi, self.theta_increment/2):
+            next_point = self.generate_rotor_point(v)
             points.append(next_point)
 
-        for next_v in np.arange((5.0/6.0)*math.pi, (7.0/6.0)*math.pi, self.theta_increment):
-            next_point = self.generate_rotor_point(next_v)
+        for v in np.arange((9.0/6.0)*math.pi, (11.0/6.0)*math.pi, self.theta_increment/2):
+            next_point = self.generate_rotor_point(v)
             points.append(next_point)
 
-        for next_v in np.arange((3.0/2.0)*math.pi, (11.0/6.0)*math.pi, self.theta_increment):
-            next_point = self.generate_rotor_point(next_v)
+        for v in np.arange((5.0/6.0)*math.pi, (7.0/6.0)*math.pi, self.theta_increment/2):
+            next_point = self.generate_rotor_point(v)
             points.append(next_point)
 
         return points
 
-    """
-        Holy crap!
-    """
     def generate_rotor_point(self, v):
 
         R = self.generating_radius
@@ -186,51 +126,128 @@ class TrochoidCalculator:
             e * (1 - (9*(e**2) / R**2) * (math.sin(3*v)**2))**0.5 * \
             (math.sin(5*v) - math.sin(v))
 
-        return Point(x, y)
+        return [x, y]
 
-    def set_kyn_e(self, e=1.0):
+    def generate_rotor_bore(self):
+
+        points = []
+        bore_radius = (self.eccentricity*2) * self.rotor_bore_ratio
+
+        for theta in np.arange(0, math.pi*2, self.theta_increment):
+            points.append([
+                math.cos(theta)*bore_radius,
+                math.sin(theta)*bore_radius,
+            ])
+
+        return points
+
+    def generate_shaft(self):
+
+        points = []
+
+        radius = self.eccentricity*2
+
+        for theta in np.arange(0, math.pi*2, self.theta_increment):
+            points.append([
+                math.cos(theta)*radius,
+                math.sin(theta)*radius,
+            ])
+
+        return points
+
+    def generate_shaft_rotor_bore(self):
+
+        points = []
+        bore_radius = (self.eccentricity*2) * self.rotor_bore_ratio
+        shaft_radius = self.eccentricity*2
+        offset = bore_radius-shaft_radius-self.eccentricity*2
+
+        for theta in np.arange(0, math.pi*2, self.theta_increment):
+            points.append([
+                offset+math.cos(theta)*bore_radius,
+                offset+math.sin(theta)*bore_radius,
+            ])
+
+        return points
+
+    def set_e(self, e):
         """
             :param e: Set eccentricity value (mm)
         """
         self.eccentricity = e
 
-    def set_kyn_r(self, r=1.0):
+    def set_r(self, r):
         """
             :param r: Set Generating Radius (mm)
         """
         self.generating_radius = r
 
-    def set_kyn_m(self, m=3.0):
+    def set_m(self, m=3.0):
         self.trochoid_m = m
+
+    def set_a(self, a):
+        self.a = a
 
     def set_theta_increment(self, inc):
         self.theta_increment = inc
 
+    def set_rotor_bore_ratio(self, ratio):
+        self.rotor_bore_ratio = ratio
 
-def export_svg(generated_points, name):
-    dwg = svgwrite.Drawing(name, profile='tiny')
 
-    num_points = len(generated_points)
+def append_svg(points, name="output.svg", drawing=None):
+
+    if drawing is None:
+        drawing = svgwrite.Drawing(name, profile='tiny')
+
+    num_points = len(points)
 
     for index in range(num_points):
 
-        current_point = generated_points[index]
-        next_point = generated_points[(index+1) % num_points]
+        current_point = points[index]
+        next_point = points[(index+1) % num_points]
 
-        dwg.add(dwg.line(
-            (current_point.x, current_point.y),
-            (next_point.x, next_point.y),
+        drawing.add(drawing.line(
+            (current_point[0], current_point[1]),
+            (next_point[0], next_point[1]),
             stroke=svgwrite.rgb(0, 0, 0, '%'))
         )
 
-    dwg.save()
+    return drawing
 
 
-def show_graph(generated_points):
+def append_dxf(points, name="output.dxf", drawing=None):
+
+    if drawing is None:
+        drawing = dxf.drawing(name)
+
+    num_points = len(points)
+
+    for index in range(num_points):
+
+        current_point = points[index]
+        next_point = points[(index+1) % num_points]
+
+        drawing.add(dxf.line(
+            (current_point[0], current_point[1]),
+            (next_point[0], next_point[1]),
+            color=7)
+        )
+
+    return drawing
+
+
+def show_graph(t_points, r_points, s_points):
     # Show as a graph
 
-    refactored_points = np.array([[p.x, p.y] for p in generated_points])
-    x, y = refactored_points.T
+    refac_t_points = np.array([p for p in t_points])
+    t_x, t_y = refac_t_points.T
+
+    refac_r_points = np.array([p for p in r_points])
+    r_x, r_y = refac_r_points.T
+
+    refac_s_points = np.array([p for p in s_points])
+    s_x, s_y = refac_s_points.T
 
     # Tart up the plot
     ax = plt.gca()
@@ -254,24 +271,48 @@ def show_graph(generated_points):
 
     plt.axis('equal')
 
-    plt.scatter(x, y)
+    plt.scatter(t_x, t_y)
+    plt.scatter(r_x, r_y)
+    plt.scatter(s_x, s_y)
+
     plt.show()
 
 
 if __name__ == "__main__":
-    pc = TrochoidCalculator()
-
     # Arguments from page 17 of KY's RE
-    pc.set_theta_increment(0.001)
-    pc.set_kyn_e(17.5)
-    pc.set_kyn_r(116)
-    pc.set_kyn_m(3)
+    rotary_calc = TrochoidCalculator()
 
-    pt_points = pc.generate_peritrochoid()
-    export_svg(pt_points, "peritrochoid.svg")
-    show_graph(np.array(pt_points))
+    rotary_calc.set_r(71)
+    rotary_calc.set_e(11.6)
+    rotary_calc.set_a(0.5)
 
-    rotor_points = pc.generate_rotor()
-    show_graph(np.array(rotor_points))
-    export_svg(rotor_points, "rotor.svg")
+    rotary_calc.set_theta_increment(0.05)
 
+    print("Trochoid Constant K = %f" % (rotary_calc.generating_radius / rotary_calc.eccentricity))
+
+    # Housing Trochoid
+    trochoid_points = rotary_calc.generate_trochoid()
+    trochoid_drawing = append_dxf(trochoid_points, name="TrochoidHousing.dxf")
+    trochoid_drawing.save()
+
+    # Rotor
+    rotor_points = rotary_calc.generate_rotor()
+    rotor_bore_points = rotary_calc.generate_rotor_bore()
+    rotor_all = []
+    rotor_all.extend(rotor_points)
+    rotor_all.extend(rotor_bore_points)
+    rotor_drawing = append_dxf(rotor_points, name="Rotor.dxf")
+    append_dxf(rotor_bore_points, drawing=rotor_drawing)
+    rotor_drawing.save()
+
+    # Shaft
+    shaft_points = rotary_calc.generate_shaft()
+    shaft_bore_points = rotary_calc.generate_shaft_rotor_bore()
+    shaft_all = []
+    shaft_all.extend(shaft_points)
+    shaft_all.extend(shaft_bore_points)
+    shaft_drawing = append_dxf(shaft_points, name="E-Shaft.dxf")
+    append_dxf(shaft_bore_points, drawing=shaft_drawing)
+    shaft_drawing.save()
+
+    show_graph(np.array(trochoid_points), np.array(rotor_all), np.array(shaft_all))
