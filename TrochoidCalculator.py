@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 import svgwrite
 from dxfwrite import DXFEngine as dxf
 
+
 class TrochoidCalculator:
 
     """
@@ -64,19 +65,26 @@ class TrochoidCalculator:
     theta_increment = 0.01
 
     """
-        ratio of rotor_bore : e
+        Radius of the shaft ratio to e
     """
-    rotor_bore_ratio = 1.75
+    shaft_to_e_ratio = 1.5
 
     """
-        x = e sin alpha + R cos alpha/3
-        y = e sin alpha + R sin alpha/3
+        Radius of the rotor_bore ratio to e
+    """
+    rotor_bore_to_e_ratio = 2.5
+
+    """
+        Using R+a for parallel trochoid envelope
+        
+        x = e sin alpha + R+a cos alpha/3
+        y = e sin alpha + R+a sin alpha/3
     """
     def generate_trochoid(self):
         # Array of points generated
         points = []
 
-        R = self.generating_radius+self.alpha
+        R = self.generating_radius+self.a
 
         for angle in np.arange(0, math.pi*(self.trochoid_m*2), self.theta_increment):
             points.append([
@@ -131,7 +139,7 @@ class TrochoidCalculator:
     def generate_rotor_bore(self):
 
         points = []
-        bore_radius = (self.eccentricity*2) * self.rotor_bore_ratio
+        bore_radius = self.eccentricity * self.rotor_bore_to_e_ratio
 
         for theta in np.arange(0, math.pi*2, self.theta_increment):
             points.append([
@@ -145,7 +153,7 @@ class TrochoidCalculator:
 
         points = []
 
-        radius = self.eccentricity*2
+        radius = self.eccentricity*self.shaft_to_e_ratio
 
         for theta in np.arange(0, math.pi*2, self.theta_increment):
             points.append([
@@ -158,14 +166,13 @@ class TrochoidCalculator:
     def generate_shaft_rotor_bore(self):
 
         points = []
-        bore_radius = (self.eccentricity*2) * self.rotor_bore_ratio
-        shaft_radius = self.eccentricity*2
-        offset = bore_radius-shaft_radius-self.eccentricity*2
+
+        bore_radius = self.eccentricity * self.rotor_bore_to_e_ratio
 
         for theta in np.arange(0, math.pi*2, self.theta_increment):
             points.append([
-                offset+math.cos(theta)*bore_radius,
-                offset+math.sin(theta)*bore_radius,
+                self.eccentricity - (math.cos(theta)*bore_radius),
+                math.sin(theta)*bore_radius,
             ])
 
         return points
@@ -191,8 +198,11 @@ class TrochoidCalculator:
     def set_theta_increment(self, inc):
         self.theta_increment = inc
 
-    def set_rotor_bore_ratio(self, ratio):
-        self.rotor_bore_ratio = ratio
+    def set_rotor_bore_to_e_ratio(self, ratio):
+        self.rotor_bore_to_e_ratio = ratio
+
+    def set_shaft_to_e_ratio(self,ratio):
+        self.shaft_to_e_ratio = ratio
 
 
 def append_svg(points, name="output.svg", drawing=None):
@@ -220,6 +230,8 @@ def append_dxf(points, name="output.dxf", drawing=None):
 
     if drawing is None:
         drawing = dxf.drawing(name)
+        # set unit of measurement to mm
+        drawing.header['$LUNITS'] = 4
 
     num_points = len(points)
 
@@ -285,6 +297,8 @@ if __name__ == "__main__":
     rotary_calc.set_r(71)
     rotary_calc.set_e(11.6)
     rotary_calc.set_a(0.5)
+    rotary_calc.set_shaft_to_e_ratio(1.5)
+    rotary_calc.set_rotor_bore_to_e_ratio(3.25)
 
     rotary_calc.set_theta_increment(0.05)
 
